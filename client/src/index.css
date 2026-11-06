@@ -1,0 +1,21 @@
+body {
+  font-family: system-ui, sans-serif;
+  margin: 0;
+  padding: 2rem;
+  max-width: 640px;
+}
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.error {
+  color: #b00020;
+}
+
+li {
+  margin: 0.25rem 0;
+}

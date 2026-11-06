@@ -1,0 +1,12 @@
+{
+  "name": "gamebook-realm",
+  "private": true,
+  "scripts": {
+    "install:all": "cd server && npm install && cd ../client && npm install",
+    "dev:server": "npm --prefix server run dev",
+    "dev:client": "npm --prefix client run dev",
+    "dev:client:mock": "npm --prefix client run dev:mock",
+    "build": "npm --prefix client run build",
+    "test": "npm --prefix server test && npm --prefix client test"
+  }
+}
