@@ -3,10 +3,19 @@
   "private": true,
   "scripts": {
     "install:all": "cd server && npm install && cd ../client && npm install",
+    "ci": "npm --prefix server ci && npm --prefix client ci",
+    "dev": "node scripts/run.mjs --watch --client",
+    "start": "node scripts/run.mjs",
     "dev:server": "npm --prefix server run dev",
+    "dev:gateway": "npm --prefix server run dev:gateway",
+    "dev:story": "npm --prefix server run dev:story",
+    "dev:gameplay": "npm --prefix server run dev:gameplay",
+    "dev:discovery": "npm --prefix server run dev:discovery",
+    "dev:audit": "npm --prefix server run dev:audit",
     "dev:client": "npm --prefix client run dev",
     "dev:client:mock": "npm --prefix client run dev:mock",
     "build": "npm --prefix client run build",
-    "test": "npm --prefix server test && npm --prefix client test"
+    "test": "npm --prefix server test && npm --prefix client test",
+    "check": "npm test && npm run build"
   }
 }

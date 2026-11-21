@@ -47,6 +47,7 @@ test('mock a http vrací stejné chybové hlášky', async () => {
     ['createItem', 'x'.repeat(201)],
     ['deleteItem', 999999],
     ['deleteItem', 'abc'],
+    ['deleteItem', '9007199254740993'],
   ];
   for (const [method, arg] of cases) {
     const fromMock = await failure(mockApi[method](arg));

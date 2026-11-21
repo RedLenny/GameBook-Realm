@@ -25,7 +25,7 @@ export async function createItem(name) {
 
 export async function deleteItem(id) {
   await delay();
-  if (!/^\d+$/.test(String(id))) {
+  if (!/^\d+$/.test(String(id)) || !Number.isSafeInteger(Number(id))) {
     throw new Error('Neplatné id');
   }
   const before = items.length;

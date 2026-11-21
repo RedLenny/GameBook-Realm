@@ -4,8 +4,18 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node --watch src/index.js",
-    "start": "node src/index.js",
+    "dev": "node ../scripts/run.mjs --watch",
+    "start": "node ../scripts/run.mjs",
+    "dev:gateway": "node --watch src/index.js",
+    "dev:story": "node --watch src/run-service.js story",
+    "dev:gameplay": "node --watch src/run-service.js gameplay",
+    "dev:discovery": "node --watch src/run-service.js discovery",
+    "dev:audit": "node --watch src/run-service.js audit",
+    "start:gateway": "node src/index.js",
+    "start:story": "node src/run-service.js story",
+    "start:gameplay": "node src/run-service.js gameplay",
+    "start:discovery": "node src/run-service.js discovery",
+    "start:audit": "node src/run-service.js audit",
     "test": "node --test"
   },
   "engines": {
@@ -15,6 +25,7 @@
     "cors": "^2.8.5",
     "dotenv": "^18.0.9",
     "express": "^4.21.0",
-    "helmet": "^8.3.0"
+    "helmet": "^8.3.0",
+    "zod": "^4.6.7"
   }
 }
