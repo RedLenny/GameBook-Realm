@@ -33,6 +33,22 @@ Výchozí hodnoty stačí. Pro změnu zkopíruj `.env.example` na `.env` v dané
 | `VITE_API_URL` | client | prázdné | adresa backendu, prázdné znamená relativní `/api` |
 | `PROXY_TARGET` | client | `http://localhost:3001` | kam dev server přeposílá `/api` |
 
+## Databáze (MongoDB)
+
+Každá služba má vlastní databázi v jednom MongoDB clusteru: `gamebook_story` (příběhy a scény), `gamebook_gameplay` (hraní), `gamebook_discovery` (hodnocení) a `gamebook_audit` (audit log). Přístup k datům je v DAO vrstvě `server/src/services/<služba>/dao/`.
+
+```bash
+npm run db:init   # založí kolekce a indexy (lze spouštět opakovaně)
+npm run db:seed   # totéž + nahraje testovací příběh „Ztracený důkaz“
+```
+
+| Proměnná | Kde | Výchozí | Popis |
+| --- | --- | --- | --- |
+| `MONGODB_URI` | server | `mongodb://127.0.0.1:27017` | připojení k MongoDB (lokálně nebo Atlas) |
+| `MONGODB_DB_PREFIX` | server | `gamebook` | prefix názvů databází služeb |
+
+DAO testy (`server/test/dao.test.js`) si spouští vlastní MongoDB v paměti přes `mongodb-memory-server`, žádná instalace není potřeba. Poprvé se stáhne binárka MongoDB (~100 MB).
+
 ## Mock nebo backend
 
 Klient může běžet nad mock daty, aby šel vyvíjet bez backendu. Implementace jsou v `client/src/api/` (`httpApi.js` a `mockApi.js`). Nový endpoint patří do obou a má vracet stejné chybové hlášky.

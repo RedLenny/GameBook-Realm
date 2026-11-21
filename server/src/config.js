@@ -36,7 +36,14 @@ export const services = {
   audit: service('audit', 3005),
 };
 
-export const corsOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
+// MongoDB: jeden cluster, každá služba má vlastní databázi `<prefix>_<služba>`.
+export const mongoUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017';
+export const mongoDbPrefix = process.env.MONGODB_DB_PREFIX || 'gamebook';
+if (!/^[A-Za-z0-9_-]{1,40}$/.test(mongoDbPrefix)) {
+  throw new Error('MONGODB_DB_PREFIX may contain only letters, digits, "_" and "-"');
+}
+
+export const corsOrigins =(process.env.CORS_ORIGIN || 'http://localhost:5173')
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
