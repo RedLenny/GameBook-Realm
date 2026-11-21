@@ -40,3 +40,13 @@ export const corsOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
+
+// Google login. Optional: without these the gateway starts and /api/auth answers 503.
+export const googleAuth = {
+  clientId: process.env.GOOGLE_CLIENT_ID || '',
+  clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
+  redirectUri: process.env.GOOGLE_REDIRECT_URI || '',
+  sessionSecret: process.env.SESSION_SECRET || '',
+  frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
+  secureCookies: process.env.NODE_ENV === 'production',
+};
