@@ -1,6 +1,7 @@
 import {
   DuplicateKeyError, fromDoc, isDuplicateKey, newId, toDate, toObjectId,
 } from '../../../shared/db.js';
+import { sceneLimits } from '../limits.js';
 
 const EDITABLE = ['name', 'content', 'type'];
 
@@ -62,6 +63,18 @@ export function createSceneDao(db) {
       return items.map(fromDoc);
     },
 
+    // Počet scén pro více příběhů najednou: Map storyId → počet.
+    async countByStories(storyIds) {
+      const counts = new Map(storyIds.map((id) => [id, 0]));
+      if (!storyIds.length) return counts;
+      const rows = await scenes.aggregate([
+        { $match: { storyId: { $in: storyIds.map(toObjectId) } } },
+        { $group: { _id: '$storyId', count: { $sum: 1 } } },
+      ]).toArray();
+      for (const row of rows) counts.set(row._id.toHexString(), row.count);
+      return counts;
+    },
+
     async getInitial(storyId) {
       const story = toObjectId(storyId);
       return story ? fromDoc(await scenes.findOne({ storyId: story, type: 'initial' })) : null;
@@ -97,15 +110,15 @@ export function createSceneDao(db) {
       return deletedCount;
     },
 
-    // Přidá rozhodnutí (Add Decision). Atomicky odmítne koncovou scénu.
-    // Vrací { scene, decision }, nebo null, když scéna neexistuje nebo je koncová.
+    // Přidá rozhodnutí (Add Decision). Atomicky odmítne koncovou scénu a scénu s maximem rozhodnutí.
+    // Vrací { scene, decision }, nebo null, když scéna neexistuje, je koncová nebo plná.
     async addDecision(sceneId, { text, targetSceneId }, { now = new Date() } = {}) {
       const _id = toObjectId(sceneId);
       const target = toObjectId(targetSceneId);
       if (!_id || !target) return null;
       const decision = { id: newId(), text, targetSceneId: target };
       const scene = await scenes.findOneAndUpdate(
-        { _id, type: { $ne: 'final' } },
+        { _id, type: { $ne: 'final' }, [`decisions.${sceneLimits.maxDecisionsPerScene - 1}`]: { $exists: false } },
         { $push: { decisions: decision }, $set: { updatedAt: now } },
         { returnDocument: 'after' },
       );

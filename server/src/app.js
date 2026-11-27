@@ -39,9 +39,13 @@ export function createApp({
     req.authenticatedPlayerId = session.sub;
     next();
   }];
-  app.get(['/api/playthroughs/list', '/api/discovery/rating/getStats'], requireSession);
+  app.get([
+    '/api/stories/story/get', '/api/stories/story/list',
+    '/api/playthroughs/list', '/api/discovery/rating/getStats',
+  ], requireSession);
   app.post([
-    '/api/stories/story/create', '/api/stories/scene/create', '/api/discovery/rating/create',
+    '/api/stories/story/create', '/api/stories/scene/create', '/api/stories/decision/create',
+    '/api/playthroughs/start', '/api/discovery/rating/create',
   ], requireSession);
 
   app.use('/api/stories', proxyToService('/api/stories', clients.story));

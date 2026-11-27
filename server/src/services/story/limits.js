@@ -3,6 +3,7 @@ export const storyLimits = Object.freeze({
   maxNameLength: 120,
   maxDescriptionLength: 2000,
   maxGenreLength: 50,
+  defaultPageSize: 20,
 });
 
 export const sceneLimits = Object.freeze({

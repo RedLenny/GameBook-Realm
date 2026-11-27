@@ -1,4 +1,6 @@
-import { fromDoc, page, toObjectId } from '../../../shared/db.js';
+import {
+  DuplicateKeyError, fromDoc, isDuplicateKey, page, toObjectId,
+} from '../../../shared/db.js';
 
 // Playthrough DAO: hraní příběhů (kolekce `playthroughs`, databáze Gameplay Service).
 // Scény a příběhy patří Story Service, tady jsou jen jejich id.
@@ -12,26 +14,51 @@ export function createPlaythroughDao(db) {
       await playthroughs.createIndexes([
         { key: { playerId: 1, state: 1, updatedAt: -1 }, name: 'player_state_updated' },
         { key: { storyId: 1 }, name: 'story' },
+        // Nejvýše jedno rozehrané hraní příběhu na hráče.
+        {
+          key: { playerId: 1, storyId: 1 },
+          name: 'one_in_progress_per_story',
+          unique: true,
+          partialFilterExpression: { state: 'inProgress' },
+        },
       ]);
     },
 
     // Start Playthrough: nové hraní začíná na úvodní scéně.
-    async create({ storyId, playerId, initialSceneId }, { now = new Date() } = {}) {
+    async create({ storyId, playerId, initialSceneId, storyName }, { now = new Date() } = {}) {
       const story = toObjectId(storyId);
       const scene = toObjectId(initialSceneId);
       if (!story || !scene) throw new TypeError('Invalid storyId or initialSceneId');
       const doc = {
         storyId: story,
+        storyName,
         playerId,
         state: 'inProgress',
         currentSceneId: scene,
         decisionHistory: [],
+        visitedSceneIds: [scene],
         startedAt: now,
         updatedAt: now,
         finishedAt: null,
       };
-      const { insertedId } = await playthroughs.insertOne(doc);
-      return fromDoc({ _id: insertedId, ...doc });
+      try {
+        const { insertedId } = await playthroughs.insertOne(doc);
+        return fromDoc({ _id: insertedId, ...doc });
+      } catch (error) {
+        if (isDuplicateKey(error)) throw new DuplicateKeyError('Hráč už má tento příběh rozehraný', error);
+        throw error;
+      }
+    },
+
+    // „Začít znovu“: ukončí rozehrané hraní. Vrací null, pokud už rozehrané není.
+    async abandon(id, { now = new Date() } = {}) {
+      const _id = toObjectId(id);
+      if (!_id) return null;
+      return fromDoc(await playthroughs.findOneAndUpdate(
+        { _id, state: 'inProgress' },
+        { $set: { state: 'abandoned', updatedAt: now } },
+        { returnDocument: 'after' },
+      ));
     },
 
     async get(id) {

@@ -6,10 +6,13 @@ export const objectIdInput = z.string().regex(/^[\da-f]{24}$/i).toLowerCase();
 const queryInteger = (min, max) => z.string().regex(/^\d+$/)
   .transform(Number).pipe(z.number().int().min(min).max(max));
 
-export const pageInput = z.object({
+// Stránkování v query stringu s výchozí velikostí stránky podle příkazu.
+export const pagingInput = (defaultPageSize) => z.object({
   pageIndex: queryInteger(0, Math.floor(Number.MAX_SAFE_INTEGER / 100)).default(0),
-  pageSize: queryInteger(1, 100).default(50),
+  pageSize: queryInteger(1, 100).default(defaultPageSize),
 });
+
+export const pageInput = pagingInput(50);
 
 // The command contract distinguishes a bad field from an extra field.
 // Zod strips the latter; return its path as a warning to the caller.

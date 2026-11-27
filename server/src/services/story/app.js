@@ -3,7 +3,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { serviceToken } from '../../config.js';
 import { fromDoc, serviceDatabase, toObjectId } from '../../shared/db.js';
-import { asyncHandler } from '../../shared/errors.js';
+import { AppError, asyncHandler } from '../../shared/errors.js';
 import { commandInput, objectIdInput } from '../../shared/commandInput.js';
 import { internalAuth } from '../../shared/internalAuth.js';
 import { publicationPageSize } from '../../shared/publishedStories.js';
@@ -13,6 +13,9 @@ import { createStoryDao } from './dao/storyDao.js';
 import { createSceneDao } from './dao/sceneDao.js';
 import { mountStoryCreate } from './commands/storyCreate.js';
 import { mountSceneCreate } from './commands/sceneCreate.js';
+import { mountDecisionCreate } from './commands/decisionCreate.js';
+import { mountStoryGet } from './commands/storyGet.js';
+import { mountStoryList } from './commands/storyList.js';
 
 export function createStoryApp({
   db = serviceDatabase('story'), token = serviceToken, clients = createServiceClients(), router = Router(), ...options
@@ -23,11 +26,37 @@ export function createStoryApp({
   const sceneDao = createSceneDao(db);
   mountStoryCreate(router, { stories: storyDao, audit, token });
   mountSceneCreate(router, { stories: storyDao, scenes: sceneDao, audit, token });
+  mountDecisionCreate(router, { stories: storyDao, scenes: sceneDao, audit, token });
+  mountStoryGet(router, { stories: storyDao, scenes: sceneDao, token });
+  mountStoryList(router, { stories: storyDao, scenes: sceneDao, token });
 
   const internal = Router();
   const guard = internalAuth(token, { required: true });
   const stories = db.collection('stories');
   const fields = { name: 1, state: 1, description: 1, genre: 1, authorId: 1, publishedAt: 1 };
+
+  // story/getPlayable (interní, pro playthrough/start): stav příběhu, počet scén a úvodní scéna.
+  // Obsah konceptu nevrací a rozhodnutí jsou bez targetSceneId.
+  internal.get('/story/getPlayable', guard, commandInput(z.object({ id: objectIdInput }), 'query'),
+    asyncHandler(async (req, res) => {
+      const { id } = req.dtoIn;
+      const story = await storyDao.get(id);
+      if (!story) throw new AppError(404, 'storyNotFound', 'Příběh nebyl nalezen.', { storyId: id });
+      const meta = { id: story.id, name: story.name, state: story.state };
+      if (story.state !== 'published') return res.json({ story: meta });
+      const [counts, initial] = await Promise.all([sceneDao.countByStories([id]), sceneDao.getInitial(id)]);
+      res.json({
+        story: meta,
+        sceneCount: counts.get(id),
+        initialScene: initial && {
+          id: initial.id,
+          name: initial.name,
+          content: initial.content,
+          type: initial.type,
+          decisions: initial.decisions.map(({ id: decisionId, text }) => ({ id: decisionId, text })),
+        },
+      });
+    }));
   internal.get('/story/publishedPage', guard, commandInput(z.object({ after: objectIdInput.optional() }), 'query'),
     asyncHandler(async (req, res) => {
       const filter = { state: 'published' };
