@@ -9,6 +9,9 @@ import { gatewayPlayer, internalAuth } from '../../shared/internalAuth.js';
 import { storySummaries } from '../../shared/publishedStories.js';
 import { createServiceClients } from '../../shared/serviceClients.js';
 import { createStoryIndexDao } from './dao/storyIndexDao.js';
+import { createRatingDao } from './dao/ratingDao.js';
+import { createAuditClient } from '../../shared/auditClient.js';
+import { mountRatingCreate } from './commands/ratingCreate.js';
 
 export function createDiscoveryApp({ db = serviceDatabase('discovery'), token = serviceToken, clients = createServiceClients(), ...options } = {}) {
   const index = createStoryIndexDao(db);
@@ -22,6 +25,14 @@ export function createDiscoveryApp({ db = serviceDatabase('discovery'), token = 
     });
     return storySummaries.parse(result);
   }
+  mountRatingCreate(router, {
+    ratings: createRatingDao(db),
+    gameplay: clients.gameplay,
+    findPublishedStory: async (storyId, requestId) =>
+      (await lookup(storyId, requestId)).itemList.find((item) => item.id === storyId) ?? null,
+    audit: createAuditClient(clients.audit, 'discovery'),
+    token,
+  });
   internal.post('/storyIndex/create', guard, commandInput(byStory, 'body'), asyncHandler(async (req, res) => {
     const { storyId } = req.dtoIn;
     const { itemList } = await lookup(storyId, req.requestId);

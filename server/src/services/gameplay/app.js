@@ -9,6 +9,7 @@ import { gatewayPlayer } from '../../shared/internalAuth.js';
 import { storySummaries } from '../../shared/publishedStories.js';
 import { createServiceClients } from '../../shared/serviceClients.js';
 import { createPlaythroughDao } from './dao/playthroughDao.js';
+import { mountPlaythroughGetFinished } from './commands/playthroughGetFinished.js';
 
 const listInput = pageInput.extend({
   pageInfo: pageInput.optional(),
@@ -18,6 +19,8 @@ const listInput = pageInput.extend({
 export function createGameplayApp({ db = serviceDatabase('gameplay'), token = serviceToken, clients = createServiceClients(), ...options } = {}) {
   const router = Router();
   const playthroughs = createPlaythroughDao(db);
+  const internal = Router();
+  mountPlaythroughGetFinished(internal, { playthroughs, token });
   router.get('/list', gatewayPlayer(token), commandInput(listInput, 'query'), asyncHandler(async (req, res) => {
     const { state } = req.dtoIn;
     const { pageIndex, pageSize } = req.dtoIn.pageInfo ?? req.dtoIn;
@@ -58,7 +61,7 @@ export function createGameplayApp({ db = serviceDatabase('gameplay'), token = se
     name: 'gameplay',
     prefix: '/api/playthroughs',
     dependencies: ['story', 'audit'],
-    clients, token, router,
+    clients, token, router, internalRouter: internal,
     ...options,
   });
 }
