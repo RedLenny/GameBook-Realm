@@ -40,7 +40,7 @@ export function createApp({
     next();
   }];
   app.get(['/api/playthroughs/list', '/api/discovery/rating/getStats'], requireSession);
-  app.post(['/api/stories/story/create'], requireSession);
+  app.post(['/api/stories/story/create', '/api/stories/scene/create'], requireSession);
 
   app.use('/api/stories', proxyToService('/api/stories', clients.story));
   app.use('/api/playthroughs', proxyToService('/api/playthroughs', clients.gameplay));

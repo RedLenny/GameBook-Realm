@@ -10,14 +10,19 @@ import { publicationPageSize } from '../../shared/publishedStories.js';
 import { createAuditClient } from '../../shared/auditClient.js';
 import { createServiceClients } from '../../shared/serviceClients.js';
 import { createStoryDao } from './dao/storyDao.js';
+import { createSceneDao } from './dao/sceneDao.js';
 import { mountStoryCreate } from './commands/storyCreate.js';
+import { mountSceneCreate } from './commands/sceneCreate.js';
 
 export function createStoryApp({
   db = serviceDatabase('story'), token = serviceToken, clients = createServiceClients(), router = Router(), ...options
 } = {}) {
   // Veřejné příkazy (přes gateway pod /api/stories).
   const audit = createAuditClient(clients.audit, 'story');
-  mountStoryCreate(router, { stories: createStoryDao(db), audit, token });
+  const storyDao = createStoryDao(db);
+  const sceneDao = createSceneDao(db);
+  mountStoryCreate(router, { stories: storyDao, audit, token });
+  mountSceneCreate(router, { stories: storyDao, scenes: sceneDao, audit, token });
 
   const internal = Router();
   const guard = internalAuth(token, { required: true });
