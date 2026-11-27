@@ -4,6 +4,8 @@ import { randomUUID } from 'node:crypto';
 import http from 'node:http';
 import { test } from 'node:test';
 import express, { Router } from 'express';
+import { MongoClient } from 'mongodb';
+import { MongoMemoryServer } from 'mongodb-memory-server';
 import { z } from 'zod';
 import { createApp } from '../src/app.js';
 import { createStoryApp } from '../src/services/story/app.js';
@@ -31,9 +33,9 @@ const jsonOptions = (body, headers = {}) => ({
   method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body),
 });
 
-async function stack(t, { storyRouter, timeoutMs = 2000 } = {}) {
+async function stack(t, { storyRouter, timeoutMs = 2000, auditDb } = {}) {
   const token = 'integration-service-token';
-  const audit = await serve(t, createAuditApp({ token }));
+  const audit = await serve(t, createAuditApp({ token, ...(auditDb && { db: auditDb }) }));
   const auditClient = createServiceClient({ name: 'audit', url: audit.url, token, timeoutMs });
   const story = await serve(t, createStoryApp({ token, clients: { audit: auditClient }, router: storyRouter }));
   const storyClient = createServiceClient({ name: 'story', url: story.url, token, timeoutMs });
@@ -110,7 +112,11 @@ test('gateway preserves method, path, query, JSON, auth, request ID and service 
 });
 
 test('audit client sends validated, authenticated and idempotent events between services', async (t) => {
-  const { audit, clients, token } = await stack(t);
+  // Audit Service ukládá události do MongoDB, test proto dostane dočasnou databázi v paměti.
+  const mongo = await MongoMemoryServer.create();
+  const mongoClient = await new MongoClient(mongo.getUri()).connect();
+  t.after(async () => { await mongoClient.close(); await mongo.stop(); });
+  const { audit, clients, token } = await stack(t, { auditDb: mongoClient.db('infrastructure_audit') });
   const client = createAuditClient(clients.audit, 'story');
   const event = { id: randomUUID(), type: 'story.published', entityId: 'story-1', occurredAt: new Date().toISOString() };
   const first = await client.record(event, { requestId: 'publish-trace' });

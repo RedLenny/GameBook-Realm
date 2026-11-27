@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import { isDeepStrictEqual } from 'node:util';
 import { z } from 'zod';
-import { AppError } from '../../shared/errors.js';
+import { AppError, asyncHandler } from '../../shared/errors.js';
 import { createServiceApp } from '../../shared/serviceApp.js';
 import { validateDtoIn } from '../../shared/validation.js';
-import { serviceDatabase } from '../../shared/db.js';
+import { DuplicateKeyError, serviceDatabase } from '../../shared/db.js';
 import { serviceToken } from '../../config.js';
 import { mountAuditCreate } from './createCommand.js';
+import { createAuditLogDao } from './dao/auditLogDao.js';
 
 const eventSchema = z.object({
   body: z.object({
@@ -25,29 +26,27 @@ const listSchema = z.object({
   }).strict(),
 });
 
-export function createAuditApp({ maxEvents = 10000, db = serviceDatabase('audit'), token = serviceToken, ...options } = {}) {
-  if (!Number.isSafeInteger(maxEvents) || maxEvents < 1) throw new Error('Invalid audit capacity');
-  // In-memory like the existing demo store; each running service owns its data.
-  const events = new Map();
+export function createAuditApp({ db = serviceDatabase('audit'), token = serviceToken, ...options } = {}) {
+  // Opakované odeslání téže události vrátí původní záznam, jiný obsah se stejným id 409.
+  const events = createAuditLogDao(db);
   const router = Router();
   mountAuditCreate(router, db, token);
-  router.post('/events', validateDtoIn(eventSchema), (req, res) => {
+  router.post('/events', validateDtoIn(eventSchema), asyncHandler(async (req, res) => {
     const event = req.dtoIn.body;
-    const existing = events.get(event.id);
-    if (existing) {
-      if (!isDeepStrictEqual(existing.event, event)) {
+    try {
+      res.status(201).json(await events.create(event, { requestId: req.requestId }));
+    } catch (error) {
+      if (!(error instanceof DuplicateKeyError)) throw error;
+      const existing = await events.get(event.id);
+      if (!existing || !isDeepStrictEqual(existing.event, event)) {
         throw new AppError(409, 'EVENT_ID_CONFLICT', 'Událost s tímto id již existuje');
       }
-      return res.json(existing);
+      res.json(existing);
     }
-    const entry = { event, requestId: req.requestId, receivedAt: new Date().toISOString() };
-    events.set(event.id, entry);
-    if (events.size > maxEvents) events.delete(events.keys().next().value);
-    res.status(201).json(entry);
-  });
-  router.get('/events', validateDtoIn(listSchema), (req, res) => {
-    res.json(Array.from(events.values()).slice(-req.dtoIn.query.limit));
-  });
+  }));
+  router.get('/events', validateDtoIn(listSchema), asyncHandler(async (req, res) => {
+    res.json(await events.list({ limit: req.dtoIn.query.limit }));
+  }));
 
   return createServiceApp({ name: 'audit', ...options, token, internalRouter: router });
 }
