@@ -139,7 +139,9 @@ export function createAuthRouter({
       await record({ type: 'auth.login', data: { method: 'google', outcome: 'suspicious', reason: 'nonce_mismatch' } }, req.requestId);
       return fail(res, 'invalid_state');
     }
-    if (!payload.email || !payload.email_verified) return fail(res, 'google_error');
+    if (typeof payload.sub !== 'string' || !payload.sub || !payload.email || !payload.email_verified) {
+      return fail(res, 'google_error');
+    }
 
     const { user, created } = await usersStore.findOrCreate({
       googleSub: payload.sub,

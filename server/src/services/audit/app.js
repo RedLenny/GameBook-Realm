@@ -4,6 +4,9 @@ import { z } from 'zod';
 import { AppError } from '../../shared/errors.js';
 import { createServiceApp } from '../../shared/serviceApp.js';
 import { validateDtoIn } from '../../shared/validation.js';
+import { serviceDatabase } from '../../shared/db.js';
+import { serviceToken } from '../../config.js';
+import { mountAuditCreate } from './createCommand.js';
 
 const eventSchema = z.object({
   body: z.object({
@@ -22,11 +25,12 @@ const listSchema = z.object({
   }).strict(),
 });
 
-export function createAuditApp({ maxEvents = 10000, ...options } = {}) {
+export function createAuditApp({ maxEvents = 10000, db = serviceDatabase('audit'), token = serviceToken, ...options } = {}) {
   if (!Number.isSafeInteger(maxEvents) || maxEvents < 1) throw new Error('Invalid audit capacity');
   // In-memory like the existing demo store; each running service owns its data.
   const events = new Map();
   const router = Router();
+  mountAuditCreate(router, db, token);
   router.post('/events', validateDtoIn(eventSchema), (req, res) => {
     const event = req.dtoIn.body;
     const existing = events.get(event.id);
@@ -45,5 +49,5 @@ export function createAuditApp({ maxEvents = 10000, ...options } = {}) {
     res.json(Array.from(events.values()).slice(-req.dtoIn.query.limit));
   });
 
-  return createServiceApp({ name: 'audit', ...options, internalRouter: router });
+  return createServiceApp({ name: 'audit', ...options, token, internalRouter: router });
 }

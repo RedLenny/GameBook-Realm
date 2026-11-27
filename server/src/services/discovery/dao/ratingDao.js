@@ -57,7 +57,11 @@ export function createRatingDao(db) {
       if (!ids.length) return stats;
       const rows = await ratings.aggregate([
         { $match: { storyId: { $in: ids } } },
-        { $group: { _id: '$storyId', averageRating: { $avg: '$value' }, ratingCount: { $sum: 1 } } },
+        { $group: {
+          _id: '$storyId',
+          averageRating: { $avg: { $ifNull: ['$stars', '$value'] } },
+          ratingCount: { $sum: 1 },
+        } },
       ]).toArray();
       for (const row of rows) {
         stats.set(row._id.toHexString(), {

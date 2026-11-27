@@ -7,14 +7,16 @@ import { createSceneDao } from '../services/story/dao/sceneDao.js';
 import { createPlaythroughDao } from '../services/gameplay/dao/playthroughDao.js';
 import { createRatingDao } from '../services/discovery/dao/ratingDao.js';
 import { createAuditLogDao } from '../services/audit/dao/auditLogDao.js';
+import { createAuditRecordDao } from '../services/audit/dao/auditRecordDao.js';
+import { createStoryIndexDao } from '../services/discovery/dao/storyIndexDao.js';
 import { story as seedStory, scenes as seedScenes } from '../seed/ztracenyDukaz.js';
 
 // Které DAO patří ke které službě (každá služba má vlastní databázi).
 export const serviceDaos = {
   story: { stories: createStoryDao, scenes: createSceneDao },
   gameplay: { playthroughs: createPlaythroughDao },
-  discovery: { ratings: createRatingDao },
-  audit: { auditLog: createAuditLogDao },
+  discovery: { ratings: createRatingDao, storyIndex: createStoryIndexDao },
+  audit: { auditLog: createAuditLogDao, records: createAuditRecordDao },
 };
 
 // Vytvoří DAO pro všechny služby nad jedním klientem.
@@ -39,6 +41,7 @@ export async function initDatabase(client, { seed = false, dbName } = {}) {
 export async function seedDatabase(daos) {
   await daos.story.stories.upsert(seedStory);
   for (const scene of seedScenes) await daos.story.scenes.upsert(scene);
+  await daos.discovery.storyIndex.put(seedStory, { restore: true });
   return { stories: 1, scenes: seedScenes.length };
 }
 

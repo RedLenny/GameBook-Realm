@@ -1,16 +1,16 @@
-import { randomUUID } from 'node:crypto';
-
-// In-memory like the other stores. Replace with MongoDB later, the interface stays the same.
+// Profiles are cached locally. The verified Google subject is stable across
+// gateway restarts and is also the player/author ID used in the domain data.
 export function createUsersStore() {
-  const byEmail = new Map();
+  const bySubject = new Map();
   return {
     async findOrCreate({ googleSub, email, name }) {
-      const key = email.toLowerCase();
-      const existing = byEmail.get(key);
-      if (existing) return { user: existing, created: false };
-      const user = { id: randomUUID(), googleSub, email, name, createdAt: new Date().toISOString() };
-      byEmail.set(key, user);
-      return { user, created: true };
+      const existing = bySubject.get(googleSub);
+      const user = {
+        id: googleSub, googleSub, email, name,
+        createdAt: existing?.createdAt ?? new Date().toISOString(),
+      };
+      bySubject.set(googleSub, user);
+      return { user, created: !existing };
     },
   };
 }

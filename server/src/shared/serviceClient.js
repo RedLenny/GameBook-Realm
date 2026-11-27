@@ -32,7 +32,7 @@ export function createServiceClient({ name, url, timeoutMs = 3000, token = '', f
   }
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) throw new Error('Invalid service timeout');
 
-  async function send(path, { method = 'GET', body, requestId, authorization, signal } = {}) {
+  async function send(path, { method = 'GET', body, requestId, playerId, authorization, signal } = {}) {
     // Only a fixed, configured service may be contacted. Callers cannot override the origin.
     if (!path.startsWith('/') || path.startsWith('//') || path.includes('\\')) {
       throw new Error('Service path must be an absolute path, not a URL');
@@ -49,6 +49,7 @@ export function createServiceClient({ name, url, timeoutMs = 3000, token = '', f
           accept: 'application/json',
           ...(body !== undefined && { 'content-type': 'application/json' }),
           ...(requestId && { 'x-request-id': requestId }),
+          ...(playerId && { 'x-player-id': playerId }),
           ...(token && { 'x-service-token': token }),
           ...(authorization && { authorization }),
         },

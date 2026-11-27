@@ -25,6 +25,7 @@ export function proxyToService(prefix, client) {
         method: req.method,
         ...(hasBody && { body: req.body }),
         requestId: req.requestId,
+        playerId: req.authenticatedPlayerId,
         authorization: req.get('authorization'),
         signal: controller.signal,
       });

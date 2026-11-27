@@ -16,6 +16,13 @@ export async function connectDatabase({ uri = mongoUri, dbName, client: existing
 
 export const serviceDbName = (service, prefix = mongoDbPrefix) => `${prefix}_${service}`;
 
+// The driver opens a connection on the first database operation. The existing
+// health endpoints can still start before MongoDB is available.
+export function serviceDatabase(service) {
+  const client = new MongoClient(mongoUri, { serverSelectionTimeoutMS: 2000 });
+  return client.db(serviceDbName(service));
+}
+
 export class DuplicateKeyError extends Error {
   constructor(message = 'Záznam již existuje', cause) {
     super(message, { cause });

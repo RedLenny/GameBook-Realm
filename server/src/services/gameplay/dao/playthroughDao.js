@@ -50,6 +50,24 @@ export function createPlaythroughDao(db) {
       return { items: items.map(fromDoc), total };
     },
 
+    // Progress belongs to a player/story pair across all attempts. Legacy
+    // records store each choice's origin and the current scene, newer ones
+    // can also carry the model's explicit visitedSceneIds.
+    async visitedCounts(playerId, storyIds) {
+      const rows = await playthroughs.aggregate([
+        { $match: { playerId, storyId: { $in: storyIds.map(toObjectId) } } },
+        { $project: { storyId: 1, visited: { $setUnion: [
+          { $ifNull: ['$visitedSceneIds', []] }, { $ifNull: ['$decisionHistory.sceneId', []] },
+          { $ifNull: ['$history.sceneId', []] }, ['$currentSceneId'],
+        ] } } },
+        { $unwind: '$visited' },
+        { $match: { visited: { $ne: null } } },
+        { $group: { _id: { story: '$storyId', scene: { $toString: '$visited' } } } },
+        { $group: { _id: '$_id.story', count: { $sum: 1 } } },
+      ]).toArray();
+      return new Map(rows.map((row) => [row._id.toHexString(), row.count]));
+    },
+
     async findInProgress(storyId, playerId) {
       const story = toObjectId(storyId);
       if (!story) return null;

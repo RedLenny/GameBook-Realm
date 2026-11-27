@@ -1,4 +1,4 @@
-export function listen(app, { name, port, host }) {
+export function listen(app, { name, port, host, onClose }) {
   const server = app.listen(port, host, () => {
     console.log(`[${name}] http://${host}:${port}`);
   });
@@ -16,9 +16,15 @@ export function listen(app, { name, port, host }) {
       process.exit(1);
     }, 5000);
     timer.unref();
-    server.close(() => {
-      clearTimeout(timer);
-      process.exit(0);
+    server.close(async () => {
+      try {
+        await onClose?.();
+        clearTimeout(timer);
+        process.exit(0);
+      } catch (error) {
+        console.error(`[${name}]`, error);
+        process.exit(1);
+      }
     });
   };
   process.once('SIGINT', shutdown);
