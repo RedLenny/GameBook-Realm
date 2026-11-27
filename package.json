@@ -16,6 +16,10 @@
     "dev:client:mock": "npm --prefix client run dev:mock",
     "db:init": "npm --prefix server run db:init",
     "db:seed": "npm --prefix server run db:seed",
+    "db:up": "docker compose up -d --wait mongo",
+    "db:down": "docker compose down",
+    "db:local": "npm --prefix server run db:local",
+    "dev:session": "npm --prefix server run dev:session --",
     "build": "npm --prefix client run build",
     "test": "npm --prefix server test && npm --prefix client test",
     "check": "npm test && npm run build"

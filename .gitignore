@@ -6,3 +6,5 @@ dist/
 !.env.mock
 *.log
 .DS_Store
+docs/
+.mongo-data/

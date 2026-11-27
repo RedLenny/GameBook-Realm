@@ -1,0 +1,39 @@
+# Lokální MongoDB pro vývoj: `npm run db:up`, zastavení `npm run db:down`.
+# Jednouzlový replica set, aby fungovaly transakce stejně jako v MongoDB Atlas.
+# Node služby se spouští mimo Docker přes `npm run dev` (scripts/run.mjs).
+services:
+  mongo:
+    image: mongo:7.0
+    command: ["--replSet", "rs0", "--bind_ip_all"]
+    ports:
+      - "127.0.0.1:27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      # První úspěšná kontrola replica set založí, další jen ověří jeho stav.
+      test:
+        - CMD
+        - mongosh
+        - --quiet
+        - --eval
+        - "try { rs.status().ok } catch (e) { rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'localhost:27017' }] }).ok }"
+      interval: 5s
+      timeout: 10s
+      retries: 12
+      start_period: 10s
+
+  # Volitelné prohlížení dat v prohlížeči: `docker compose --profile tools up -d`, pak http://localhost:8081
+  mongo-express:
+    image: mongo-express:1.0.2
+    profiles: ["tools"]
+    depends_on:
+      mongo:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8081:8081"
+    environment:
+      ME_CONFIG_MONGODB_URL: mongodb://mongo:27017/?directConnection=true
+      ME_CONFIG_BASICAUTH: "false"
+
+volumes:
+  mongo-data:

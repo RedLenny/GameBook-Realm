@@ -18,6 +18,8 @@
     "start:audit": "node src/run-service.js audit",
     "db:init": "node src/db/init.js",
     "db:seed": "node src/db/init.js --seed",
+    "db:local": "node scripts/db-local.mjs",
+    "dev:session": "node scripts/dev-session.mjs",
     "test": "node --test"
   },
   "engines": {
