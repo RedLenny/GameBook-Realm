@@ -7,20 +7,30 @@ import { asyncHandler } from '../../shared/errors.js';
 import { commandInput, objectIdInput } from '../../shared/commandInput.js';
 import { internalAuth } from '../../shared/internalAuth.js';
 import { publicationPageSize } from '../../shared/publishedStories.js';
+import { createAuditClient } from '../../shared/auditClient.js';
+import { createServiceClients } from '../../shared/serviceClients.js';
+import { createStoryDao } from './dao/storyDao.js';
+import { mountStoryCreate } from './commands/storyCreate.js';
 
-export function createStoryApp({ db = serviceDatabase('story'), token = serviceToken, ...options } = {}) {
-  const router = Router();
+export function createStoryApp({
+  db = serviceDatabase('story'), token = serviceToken, clients = createServiceClients(), router = Router(), ...options
+} = {}) {
+  // Veřejné příkazy (přes gateway pod /api/stories).
+  const audit = createAuditClient(clients.audit, 'story');
+  mountStoryCreate(router, { stories: createStoryDao(db), audit, token });
+
+  const internal = Router();
   const guard = internalAuth(token, { required: true });
   const stories = db.collection('stories');
   const fields = { name: 1, state: 1, description: 1, genre: 1, authorId: 1, publishedAt: 1 };
-  router.get('/story/publishedPage', guard, commandInput(z.object({ after: objectIdInput.optional() }), 'query'),
+  internal.get('/story/publishedPage', guard, commandInput(z.object({ after: objectIdInput.optional() }), 'query'),
     asyncHandler(async (req, res) => {
       const filter = { state: 'published' };
       if (req.dtoIn.after) filter._id = { $gt: toObjectId(req.dtoIn.after) };
       const rows = await stories.find(filter).project(fields).sort({ _id: 1 }).limit(publicationPageSize).toArray();
       res.json({ itemList: rows.map(fromDoc) });
     }));
-  router.post('/story/summaries', guard, commandInput(z.object({ storyIds: z.array(objectIdInput).min(1).max(100) }), 'body'),
+  internal.post('/story/summaries', guard, commandInput(z.object({ storyIds: z.array(objectIdInput).min(1).max(100) }), 'body'),
     asyncHandler(async (req, res) => {
       const rows = await stories.aggregate([
         { $match: { _id: { $in: req.dtoIn.storyIds.map(toObjectId) } } },
@@ -38,7 +48,7 @@ export function createStoryApp({ db = serviceDatabase('story'), token = serviceT
     name: 'story',
     prefix: '/api/stories',
     dependencies: ['audit'],
-    token, internalRouter: router,
+    clients, token, router, internalRouter: internal,
     ...options,
   });
 }

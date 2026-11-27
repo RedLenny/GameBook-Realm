@@ -28,7 +28,9 @@ export function createApp({
   app.use('/api/items', createItemsRouter(itemsStore));
   app.use('/api/auth', authRouter);
 
-  app.get(['/api/playthroughs/list', '/api/discovery/rating/getStats'], cookieParser(), (req, res, next) => {
+  // Příkazy, které potřebují přihlášeného uživatele. Gateway ověří session
+  // a službě předá jeho id v hlavičce x-player-id (viz proxyToService).
+  const requireSession = [cookieParser(), (req, res, next) => {
     res.set('Cache-Control', 'private, no-store');
     const session = readSession(req, sessionConfig);
     if (typeof session?.sub !== 'string' || !/^[a-zA-Z0-9_-]{1,200}$/.test(session.sub)) {
@@ -36,7 +38,9 @@ export function createApp({
     }
     req.authenticatedPlayerId = session.sub;
     next();
-  });
+  }];
+  app.get(['/api/playthroughs/list', '/api/discovery/rating/getStats'], requireSession);
+  app.post(['/api/stories/story/create'], requireSession);
 
   app.use('/api/stories', proxyToService('/api/stories', clients.story));
   app.use('/api/playthroughs', proxyToService('/api/playthroughs', clients.gameplay));
