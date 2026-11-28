@@ -282,3 +282,42 @@ test('story/getPlayable hides draft content, reports unknown stories and is inte
   assert.equal((await internal({ id: story.id }, {})).status, 401);
   assert.equal((await fetch(gateway + '/internal/story/getPlayable?id=' + story.id)).status, 404);
 });
+
+const removeScene = (sceneId, as) => call('/scene/delete', { body: { sceneId }, as });
+
+test('scene/delete protects the initial and referenced scenes and deletes an unreferenced draft scene', async () => {
+  const { id: storyId } = await draft();
+  const start = await addScene(storyId, 'Začátek', 'initial');
+  const ending = await addScene(storyId, 'Výsledek', 'final');
+  const extra = await addScene(storyId, 'Scéna navíc');
+  const { decision } = await daos.story.scenes.addDecision(start.id, { text: 'Dál', targetSceneId: ending.id });
+
+  await expectError(await removeScene(extra.id, null), 401, 'NOT_AUTHENTICATED');
+  await expectError(await removeScene(extra.id, PETR), 403, 'userNotAuthorized');
+  await expectError(await removeScene(start.id), 409, 'initialSceneDeleteForbidden');
+  const blocked = await expectError(await removeScene(ending.id), 409, 'sceneHasIncomingDecisions');
+  assert.deepEqual(blocked.details.incomingDecisions, [
+    { sceneId: start.id, sceneName: start.name, decisionId: decision.id, text: 'Dál' },
+  ]);
+  assert.equal((await removeScene(extra.id)).status, 200);
+  assert.equal(await daos.story.scenes.get(extra.id), null);
+  await expectError(await removeScene(extra.id), 404, 'sceneNotFound');
+  await expectError(await removeScene(seedScenes.at(-1).id), 409, 'storyNotEditable');
+});
+
+test('a concurrent decision and scene deletion cannot leave a dangling reference', async () => {
+  const { id: storyId } = await draft();
+  const start = await addScene(storyId, 'Začátek', 'initial');
+  const ending = await addScene(storyId, 'Výsledek', 'final');
+  const [addition, deletion] = await Promise.all([
+    addDecision({ sceneId: start.id, targetSceneId: ending.id, text: 'Dál' }), removeScene(ending.id),
+  ]);
+  if (addition.status === 201) {
+    await expectError(deletion, 409, 'sceneHasIncomingDecisions');
+  } else {
+    assert.equal(deletion.status, 200);
+    await expectError(addition, 404, 'targetSceneNotFound');
+  }
+  const source = await daos.story.scenes.get(start.id);
+  assert.equal(source.decisions.length === 1, Boolean(await daos.story.scenes.get(ending.id)));
+});

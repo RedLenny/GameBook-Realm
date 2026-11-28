@@ -19,9 +19,9 @@ export const sceneCreateSchema = z.object({
 
 // POST /api/stories/scene/create (přes gateway), profily Users a Authorities.
 // Scénu smí přidat jen autor příběhu (i Authorities cizí obsah neupravují) a jen do konceptu.
-export function mountSceneCreate(router, { stories, scenes, audit, token }) {
+export function mountSceneCreate(router, { stories, scenes, audit, token, writeStory }) {
   router.post('/scene/create', gatewayPlayer(token), commandInput(sceneCreateSchema, 'body'),
-    asyncHandler(async (req, res) => {
+    asyncHandler((req, res) => writeStory(req.dtoIn.storyId, async () => {
       const { storyId, name, content, type } = req.dtoIn;
       const { requestId } = req;
       const record = {
@@ -80,5 +80,5 @@ export function mountSceneCreate(router, { stories, scenes, audit, token }) {
 
       await audit.tryCreate({ ...record, entityId: scene.id, result: 'success' }, { requestId });
       res.status(201).json({ scene, uuAppErrorMap: req.uuAppErrorMap });
-    }));
+    })));
 }

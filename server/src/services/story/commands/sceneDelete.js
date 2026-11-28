@@ -33,6 +33,14 @@ export function mountSceneDelete(router, { stories, scenes, audit, token, writeS
           }
           const current = await scenes.getInStory(storyId, sceneId);
           if (!current) throw missingScene();
+          if (current.type === 'initial') {
+            throw new AppError(409, 'initialSceneDeleteForbidden', 'Úvodní scénu nelze smazat.', { sceneId });
+          }
+          const incomingDecisions = await scenes.listIncomingDecisions(storyId, sceneId);
+          if (incomingDecisions.length) {
+            throw new AppError(409, 'sceneHasIncomingDecisions',
+              'Nejdříve odstraňte nebo přesměrujte volby, které vedou do této scény.', { sceneId, incomingDecisions });
+          }
           if (!await scenes.delete(sceneId)) throw missingScene();
         });
       } catch (error) {

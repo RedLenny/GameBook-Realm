@@ -16,6 +16,8 @@ import { mountSceneCreate } from './commands/sceneCreate.js';
 import { mountDecisionCreate } from './commands/decisionCreate.js';
 import { mountStoryGet } from './commands/storyGet.js';
 import { mountStoryList } from './commands/storyList.js';
+import { mountSceneDelete } from './commands/sceneDelete.js';
+import { createStoryWriteQueue } from './storyWriteQueue.js';
 
 const choiceInput = z.object({ storyId: objectIdInput, sceneId: objectIdInput, decisionId: objectIdInput });
 
@@ -31,8 +33,10 @@ export function createStoryApp({
   const storyDao = createStoryDao(db);
   const sceneDao = createSceneDao(db);
   mountStoryCreate(router, { stories: storyDao, audit, token });
-  mountSceneCreate(router, { stories: storyDao, scenes: sceneDao, audit, token });
-  mountDecisionCreate(router, { stories: storyDao, scenes: sceneDao, audit, token });
+  const edits = { stories: storyDao, scenes: sceneDao, audit, token, writeStory: createStoryWriteQueue() };
+  mountSceneCreate(router, edits);
+  mountDecisionCreate(router, edits);
+  mountSceneDelete(router, edits);
   mountStoryGet(router, { stories: storyDao, scenes: sceneDao, token });
   mountStoryList(router, { stories: storyDao, scenes: sceneDao, token });
 

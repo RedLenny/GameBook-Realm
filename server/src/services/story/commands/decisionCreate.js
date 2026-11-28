@@ -15,7 +15,7 @@ export const decisionCreateSchema = z.object({
 
 // POST /api/stories/decision/create (přes gateway), profily Users a Authorities.
 // Rozhodnutí přidává jen autor do konceptu. Limit rozhodnutí na scénu hlídá DAO atomicky.
-export function mountDecisionCreate(router, { stories, scenes, audit, token }) {
+export function mountDecisionCreate(router, { stories, scenes, audit, token, writeStory }) {
   router.post('/decision/create', gatewayPlayer(token), commandInput(decisionCreateSchema, 'body'),
     asyncHandler(async (req, res) => {
       const { sceneId, text, targetSceneId } = req.dtoIn;
@@ -42,63 +42,70 @@ export function mountDecisionCreate(router, { stories, scenes, audit, token }) {
         'Z koncové scény nelze přidat rozhodnutí. Změňte typ scény na běžnou.', { sceneId, type: 'final' });
 
       // 2. Výchozí scéna a příběh.
-      let scene, story;
+      let scene;
       try {
         scene = await scenes.get(sceneId);
-        if (scene) {
-          record.storyId = scene.storyId;
-          story = await stories.get(scene.storyId);
-        }
       } catch (error) {
         throw await createFailed(error);
       }
       if (!scene) throw await sceneNotFound();
-      if (!story) throw await fail('denied', 404, 'storyNotFound', 'Příběh nebyl nalezen.', { storyId: scene.storyId });
+      record.storyId = scene.storyId;
+      await writeStory(scene.storyId, async () => {
+        let story;
+        try {
+          scene = await scenes.getInStory(record.storyId, sceneId);
+          if (scene) story = await stories.get(scene.storyId);
+        } catch (error) {
+          throw await createFailed(error);
+        }
+        if (!scene) throw await sceneNotFound();
+        if (!story) throw await fail('denied', 404, 'storyNotFound', 'Příběh nebyl nalezen.', { storyId: scene.storyId });
 
-      // 3. Oprávnění autora a stav příběhu.
-      if (story.authorId !== req.playerId) {
-        throw await fail('denied', 403, 'userNotAuthorized',
-          'Uživatel nemá oprávnění přidávat rozhodnutí k této scéně.', { sceneId });
-      }
-      if (story.state !== 'draft') {
-        throw await fail('denied', 409, 'storyNotEditable',
-          'K publikovanému příběhu nelze přidávat nová rozhodnutí.', { storyId: story.id, state: story.state });
-      }
+        // 3. Oprávnění autora a stav příběhu.
+        if (story.authorId !== req.playerId) {
+          throw await fail('denied', 403, 'userNotAuthorized',
+            'Uživatel nemá oprávnění přidávat rozhodnutí k této scéně.', { sceneId });
+        }
+        if (story.state !== 'draft') {
+          throw await fail('denied', 409, 'storyNotEditable',
+            'K publikovanému příběhu nelze přidávat nová rozhodnutí.', { storyId: story.id, state: story.state });
+        }
 
-      // 4. Výchozí a cílová scéna.
-      if (scene.type === 'final') throw await finalForbidden();
-      let target;
-      try {
-        target = await scenes.get(targetSceneId);
-      } catch (error) {
-        throw await createFailed(error);
-      }
-      if (!target) throw await fail('denied', 404, 'targetSceneNotFound', 'Cílová scéna nebyla nalezena.', { targetSceneId });
-      if (target.storyId !== scene.storyId) {
-        throw await fail('denied', 400, 'targetSceneDifferentStory',
-          'Cílová scéna musí patřit do stejného příběhu.', { sceneId, targetSceneId });
-      }
-      if (targetSceneId === sceneId) {
-        throw await fail('denied', 400, 'targetSceneSameAsSource',
-          'Rozhodnutí musí vést do jiné scény příběhu.', { sceneId, targetSceneId });
-      }
+        // 4. Výchozí a cílová scéna.
+        if (scene.type === 'final') throw await finalForbidden();
+        let target;
+        try {
+          target = await scenes.get(targetSceneId);
+        } catch (error) {
+          throw await createFailed(error);
+        }
+        if (!target) throw await fail('denied', 404, 'targetSceneNotFound', 'Cílová scéna nebyla nalezena.', { targetSceneId });
+        if (target.storyId !== scene.storyId) {
+          throw await fail('denied', 400, 'targetSceneDifferentStory',
+            'Cílová scéna musí patřit do stejného příběhu.', { sceneId, targetSceneId });
+        }
+        if (targetSceneId === sceneId) {
+          throw await fail('denied', 400, 'targetSceneSameAsSource',
+            'Rozhodnutí musí vést do jiné scény příběhu.', { sceneId, targetSceneId });
+        }
 
-      // 5. Uložení. DAO vrátí null, když je scéna smazaná, koncová nebo už má maximum rozhodnutí.
-      let result, current;
-      try {
-        result = await scenes.addDecision(sceneId, { text, targetSceneId });
-        if (!result) current = await scenes.get(sceneId);
-      } catch (error) {
-        throw await createFailed(error);
-      }
-      if (!result) {
-        if (!current) throw await sceneNotFound();
-        if (current.type === 'final') throw await finalForbidden();
-        throw await fail('denied', 409, 'decisionLimitExceeded', 'Scéna již obsahuje maximální počet rozhodnutí.',
-          { sceneId, maxDecisionsPerScene: sceneLimits.maxDecisionsPerScene });
-      }
+        // 5. Uložení. DAO vrátí null, když je scéna smazaná, koncová nebo už má maximum rozhodnutí.
+        let result, current;
+        try {
+          result = await scenes.addDecision(sceneId, { text, targetSceneId });
+          if (!result) current = await scenes.get(sceneId);
+        } catch (error) {
+          throw await createFailed(error);
+        }
+        if (!result) {
+          if (!current) throw await sceneNotFound();
+          if (current.type === 'final') throw await finalForbidden();
+          throw await fail('denied', 409, 'decisionLimitExceeded', 'Scéna již obsahuje maximální počet rozhodnutí.',
+            { sceneId, maxDecisionsPerScene: sceneLimits.maxDecisionsPerScene });
+        }
 
-      await audit.tryCreate({ ...record, entityId: result.decision.id, result: 'success' }, { requestId });
-      res.status(201).json({ scene: result.scene, uuAppErrorMap: req.uuAppErrorMap });
+        await audit.tryCreate({ ...record, entityId: result.decision.id, result: 'success' }, { requestId });
+        res.status(201).json({ scene: result.scene, uuAppErrorMap: req.uuAppErrorMap });
+      });
     }));
 }
