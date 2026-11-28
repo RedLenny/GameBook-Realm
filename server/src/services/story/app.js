@@ -17,6 +17,12 @@ import { mountDecisionCreate } from './commands/decisionCreate.js';
 import { mountStoryGet } from './commands/storyGet.js';
 import { mountStoryList } from './commands/storyList.js';
 
+const choiceInput = z.object({ storyId: objectIdInput, sceneId: objectIdInput, decisionId: objectIdInput });
+
+function playableScene({ id, name, content, type, decisions }) {
+  return { id, name, content, type, decisions: decisions.map(({ id: decisionId, text }) => ({ id: decisionId, text })) };
+}
+
 export function createStoryApp({
   db = serviceDatabase('story'), token = serviceToken, clients = createServiceClients(), router = Router(), ...options
 } = {}) {
@@ -48,15 +54,29 @@ export function createStoryApp({
       res.json({
         story: meta,
         sceneCount: counts.get(id),
-        initialScene: initial && {
-          id: initial.id,
-          name: initial.name,
-          content: initial.content,
-          type: initial.type,
-          decisions: initial.decisions.map(({ id: decisionId, text }) => ({ id: decisionId, text })),
-        },
+        initialScene: initial && playableScene(initial),
       });
     }));
+  internal.get('/playthrough/resolveDecision', guard, commandInput(choiceInput, 'query'), asyncHandler(async (req, res) => {
+    const { storyId, sceneId, decisionId } = req.dtoIn;
+    const story = await storyDao.get(storyId);
+    if (!story) throw new AppError(404, 'storyNotFound', 'Příběh nebyl nalezen.', { storyId });
+    if (story.state !== 'published') {
+      throw new AppError(409, 'storyNotPublished', 'Příběh není dostupný pro hraní.', { storyId });
+    }
+    const source = await sceneDao.getInStory(storyId, sceneId);
+    if (!source) throw new AppError(404, 'sceneNotFound', 'Aktuální scéna nebyla nalezena.', { sceneId });
+    const decision = source.decisions.find((item) => item.id === decisionId);
+    if (!decision || source.type === 'final') {
+      throw new AppError(404, 'decisionNotFound', 'Tato volba v aktuální scéně není dostupná.', { decisionId });
+    }
+    const [target, counts] = await Promise.all([
+      sceneDao.getInStory(storyId, decision.targetSceneId),
+      sceneDao.countByStories([storyId]),
+    ]);
+    if (!target) throw new AppError(409, 'targetSceneNotFound', 'Cílová scéna nebyla nalezena.');
+    res.json({ scene: playableScene(target), sceneCount: counts.get(storyId) });
+  }));
   internal.get('/story/publishedPage', guard, commandInput(z.object({ after: objectIdInput.optional() }), 'query'),
     asyncHandler(async (req, res) => {
       const filter = { state: 'published' };

@@ -11,6 +11,7 @@ import { createServiceClients } from '../../shared/serviceClients.js';
 import { createPlaythroughDao } from './dao/playthroughDao.js';
 import { mountPlaythroughGetFinished } from './commands/playthroughGetFinished.js';
 import { mountPlaythroughStart } from './commands/playthroughStart.js';
+import { mountPlaythroughChooseDecision } from './commands/playthroughChooseDecision.js';
 import { createAuditClient } from '../../shared/auditClient.js';
 
 const listInput = pageInput.extend({
@@ -25,6 +26,7 @@ export function createGameplayApp({ db = serviceDatabase('gameplay'), token = se
   mountPlaythroughGetFinished(internal, { playthroughs, token });
   const audit = createAuditClient(clients.audit, 'gameplay');
   mountPlaythroughStart(router, { playthroughs, storyClient: clients.story, audit, token });
+  mountPlaythroughChooseDecision(router, { playthroughs, storyClient: clients.story, audit, token });
   router.get('/list', gatewayPlayer(token), commandInput(listInput, 'query'), asyncHandler(async (req, res) => {
     const { state } = req.dtoIn;
     const { pageIndex, pageSize } = req.dtoIn.pageInfo ?? req.dtoIn;

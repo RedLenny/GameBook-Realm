@@ -45,7 +45,7 @@ export function createApp({
   ], requireSession);
   app.post([
     '/api/stories/story/create', '/api/stories/scene/create', '/api/stories/decision/create',
-    '/api/playthroughs/start', '/api/discovery/rating/create',
+    '/api/playthroughs/start', '/api/playthroughs/chooseDecision', '/api/discovery/rating/create',
   ], requireSession);
 
   app.use('/api/stories', proxyToService('/api/stories', clients.story));

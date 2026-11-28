@@ -104,9 +104,10 @@ export function createPlaythroughDao(db) {
     },
 
     // Zapíše rozhodnutí a posune hráče do cílové scény. `finished: true` = cíl je koncová scéna.
-    // Podmínka na currentSceneId brání dvojímu kliknutí: když se mezitím hraní posunulo,
-    // vrátí null a nic nezapíše.
-    async recordDecision(id, { sceneId, decisionId, targetSceneId, finished = false }, { now = new Date() } = {}) {
+    // Kontrola délky historie chrání i při souběhu s průchodem cyklem zpět do stejné scény.
+    async recordDecision(id, {
+      sceneId, decisionId, targetSceneId, finished = false, historyLength,
+    }, { now = new Date() } = {}) {
       const _id = toObjectId(id);
       const scene = toObjectId(sceneId);
       const decision = toObjectId(decisionId);
@@ -115,8 +116,15 @@ export function createPlaythroughDao(db) {
       const $set = { currentSceneId: target, updatedAt: now };
       if (finished) Object.assign($set, { state: 'finished', finishedAt: now });
       return fromDoc(await playthroughs.findOneAndUpdate(
-        { _id, state: 'inProgress', currentSceneId: scene },
-        { $push: { decisionHistory: { sceneId: scene, decisionId: decision, decidedAt: now } }, $set },
+        {
+          _id, state: 'inProgress', currentSceneId: scene,
+          ...(historyLength !== undefined && { [`decisionHistory.${historyLength}`]: { $exists: false } }),
+        },
+        {
+          $push: { decisionHistory: { sceneId: scene, decisionId: decision, decidedAt: now } },
+          $addToSet: { visitedSceneIds: { $each: [scene, target] } },
+          $set,
+        },
         { returnDocument: 'after' },
       ));
     },

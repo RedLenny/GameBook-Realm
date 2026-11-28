@@ -38,6 +38,10 @@ const cookie = (sub) => 'gr_session=' + jwt.sign({ sub }, sessionSecret, {
 const start = (body, { as = 'petr' } = {}) => fetch(gateway + '/api/playthroughs/start', {
   method: 'POST', headers: { 'content-type': 'application/json', ...(as && { cookie: cookie(as) }) }, body: JSON.stringify(body),
 });
+const choose = (playthroughId, decisionId, as) => fetch(gateway + '/api/playthroughs/chooseDecision', {
+  method: 'POST', headers: { 'content-type': 'application/json', ...(as && { cookie: cookie(as) }) },
+  body: JSON.stringify({ playthroughId, decisionId }),
+});
 async function expectError(res, status, code, details) {
   assert.equal(res.status, status);
   const error = await res.json();
@@ -180,4 +184,41 @@ test('Story Service outage maps to sceneLoadFailed', async () => {
   const record = await auditLog().findOne({ operation: 'playthrough/start', actorId: 'outage', result: 'error' });
   assert.equal(record.errorCode, 'sceneLoadFailed');
   assert.equal(await playthroughs().countDocuments({ playerId: 'outage' }), 0);
+});
+
+test('playthrough/chooseDecision saves a concurrent choice once and finishes on the ending', async () => {
+  const player = 'choice-player';
+  const { playthrough: { id } } = await started(seedStory.id, player);
+  const [, , middle, , ending] = seedScenes;
+  const decision = s1001.decisions[1];
+  await expectError(await choose(id, decision.id, null), 401, 'NOT_AUTHENTICATED');
+  await expectError(await choose(id, decision.id, 'petr'), 403, 'userNotAuthorized');
+  await expectError(await choose(id, middle.decisions[0].id, player), 404, 'decisionNotFound');
+
+  // Older playthroughs may have no explicit list of visited scenes.
+  await playthroughs().updateOne({ _id: new ObjectId(id) }, { $unset: { visitedSceneIds: '' } });
+  const results = await Promise.all([choose(id, decision.id, player), choose(id, decision.id, player)]);
+  assert.equal(results.filter(({ status }) => status === 200).length, 1);
+  const rejected = results.find(({ status }) => status !== 200);
+  assert.ok(['playthroughChanged', 'decisionNotFound'].includes((await rejected.json()).code));
+  const moved = await results.find(({ status }) => status === 200).json();
+  assert.equal(moved.playthrough.currentSceneId, middle.id);
+  assert.deepEqual(moved.currentScene.decisionList, middle.decisions.map(({ id, text }) => ({ id, text })));
+  assert.deepEqual(moved.progress, { visitedSceneCount: 2, totalSceneCount: 6, percent: 33 });
+
+  const lastDecision = middle.decisions[0];
+  const response = await choose(id, lastDecision.id, player);
+  assert.equal(response.status, 200);
+  const finished = await response.json();
+  assert.equal(finished.playthrough.state, 'finished');
+  assert.ok(finished.playthrough.finishedAt);
+  assert.equal(finished.currentScene.id, ending.id);
+  assert.deepEqual(finished.currentScene.decisionList, []);
+  assert.deepEqual(finished.progress, { visitedSceneCount: 3, totalSceneCount: 6, percent: 50 });
+
+  const stored = await daos.gameplay.playthroughs.get(id);
+  assert.deepEqual(stored.decisionHistory.map(({ decisionId }) => decisionId), [decision.id, lastDecision.id]);
+  assert.deepEqual(new Set(stored.visitedSceneIds), new Set([s1001.id, middle.id, ending.id]));
+  assert.equal(stored.finishedAt, finished.playthrough.finishedAt);
+  await expectError(await choose(id, lastDecision.id, player), 409, 'playthroughNotInProgress');
 });

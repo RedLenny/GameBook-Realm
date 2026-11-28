@@ -12,17 +12,23 @@ export const playthroughStartSchema = z.object({
   restart: z.boolean().default(false),
 });
 
+export const playableScene = z.object({
+  id: objectIdInput,
+  name: z.string(),
+  content: z.string(),
+  type: z.string(),
+  decisions: z.array(z.object({ id: objectIdInput, text: z.string() })),
+});
+
+export function currentSceneDto({ id, name, content, type, decisions }) {
+  return { id, name, content, type, decisionList: decisions };
+}
+
 // Odpověď interního story/getPlayable.
 const playableStory = z.object({
   story: z.object({ id: objectIdInput, name: z.string(), state: z.string() }),
   sceneCount: z.number().int().positive().optional(),
-  initialScene: z.object({
-    id: objectIdInput,
-    name: z.string(),
-    content: z.string(),
-    type: z.string(),
-    decisions: z.array(z.object({ id: objectIdInput, text: z.string() })),
-  }).nullable().optional(),
+  initialScene: playableScene.nullable().optional(),
 });
 
 // POST /api/playthroughs/start (přes gateway), profily Users a Authorities.
@@ -101,13 +107,7 @@ export function mountPlaythroughStart(router, { playthroughs, storyClient, audit
           currentSceneId: playthrough.currentSceneId,
           startedAt: playthrough.startedAt,
         },
-        currentScene: {
-          id: initialScene.id,
-          name: initialScene.name,
-          content: initialScene.content,
-          type: initialScene.type,
-          decisionList: initialScene.decisions,
-        },
+        currentScene: currentSceneDto(initialScene),
         progress: {
           visitedSceneCount,
           totalSceneCount: sceneCount,
