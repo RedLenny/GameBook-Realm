@@ -8,6 +8,7 @@ import { createApp } from '../src/app.js';
 import { initDatabase } from '../src/db/init.js';
 import { story as seedStory, scenes as seedScenes, AUTHOR_ID } from '../src/seed/ztracenyDukaz.js';
 import { createAuditApp } from '../src/services/audit/app.js';
+import { createDiscoveryApp } from '../src/services/discovery/app.js';
 import { createStoryApp } from '../src/services/story/app.js';
 import { sceneLimits } from '../src/services/story/limits.js';
 import { createServiceClient } from '../src/shared/serviceClient.js';
@@ -69,6 +70,7 @@ before(async () => {
   daos = await initDatabase(client, { seed: true, dbName: (name) => 'storyCmd_' + name });
   await service('audit', createAuditApp);
   storyUrl = await service('story', createStoryApp);
+  await service('discovery', createDiscoveryApp);
   gateway = await serve(createApp({ clients, sessionConfig: { sessionSecret } }));
 });
 after(async () => {
@@ -284,6 +286,7 @@ test('story/getPlayable hides draft content, reports unknown stories and is inte
 });
 
 const removeScene = (sceneId, as) => call('/scene/delete', { body: { sceneId }, as });
+const publish = (storyId, as) => call('/story/publish', { body: { storyId }, as });
 
 test('scene/delete protects the initial and referenced scenes and deletes an unreferenced draft scene', async () => {
   const { id: storyId } = await draft();
@@ -320,4 +323,31 @@ test('a concurrent decision and scene deletion cannot leave a dangling reference
   }
   const source = await daos.story.scenes.get(start.id);
   assert.equal(source.decisions.length === 1, Boolean(await daos.story.scenes.get(ending.id)));
+});
+
+test('story/publish validates starts, endings and dead ends, and indexes a valid story with a cycle', async () => {
+  const { id: storyId } = await draft();
+  await expectError(await publish(storyId, null), 401, 'NOT_AUTHENTICATED');
+  await expectError(await publish(storyId, PETR), 403, 'userNotAuthorized');
+  await expectError(await publish(storyId), 409, 'invalidInitialSceneCount');
+  const start = await addScene(storyId, 'Začátek', 'initial');
+  const turn = await addScene(storyId, 'Rozcestí');
+  await expectError(await publish(storyId), 409, 'finalSceneNotFound');
+  const ending = await addScene(storyId, 'Výsledek', 'final');
+  const link = (source, target) => daos.story.scenes.addDecision(source.id, { text: 'Dál', targetSceneId: target.id });
+  await link(start, turn);
+  await link(turn, start);
+  const blocked = await expectError(await publish(storyId), 409, 'storyHasDeadEnds');
+  assert.deepEqual(blocked.details.sceneIds, [start.id, turn.id]);
+  assert.equal((await daos.story.stories.get(storyId)).state, 'draft');
+
+  await link(turn, ending);
+  const res = await publish(storyId);
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.story.state, 'published');
+  assert.ok(body.story.publishedAt);
+  assert.deepEqual(body.uuAppErrorMap, {});
+  assert.ok(await db('discovery').collection('storyIndex').findOne({ _id: new ObjectId(storyId) }));
+  await expectError(await publish(storyId), 409, 'storyNotEditable');
 });

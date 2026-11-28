@@ -17,6 +17,7 @@ import { mountDecisionCreate } from './commands/decisionCreate.js';
 import { mountStoryGet } from './commands/storyGet.js';
 import { mountStoryList } from './commands/storyList.js';
 import { mountSceneDelete } from './commands/sceneDelete.js';
+import { mountStoryPublish } from './commands/storyPublish.js';
 import { createStoryWriteQueue } from './storyWriteQueue.js';
 
 const choiceInput = z.object({ storyId: objectIdInput, sceneId: objectIdInput, decisionId: objectIdInput });
@@ -37,6 +38,12 @@ export function createStoryApp({
   mountSceneCreate(router, edits);
   mountDecisionCreate(router, edits);
   mountSceneDelete(router, edits);
+  mountStoryPublish(router, {
+    ...edits,
+    indexStory: (storyId, requestId) => clients.discovery.request('/internal/storyIndex/create', {
+      method: 'POST', requestId, body: { storyId },
+    }),
+  });
   mountStoryGet(router, { stories: storyDao, scenes: sceneDao, token });
   mountStoryList(router, { stories: storyDao, scenes: sceneDao, token });
 

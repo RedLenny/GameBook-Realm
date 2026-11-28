@@ -1,6 +1,12 @@
-import { AppError } from '../../../shared/errors.js';
+import { z } from 'zod';
+import { commandInput, objectIdInput } from '../../../shared/commandInput.js';
+import { AppError, asyncHandler } from '../../../shared/errors.js';
+import { gatewayPlayer } from '../../../shared/internalAuth.js';
 
-export function validatePublication(storyId, scenes) {
+const OPERATION = 'story/publish';
+export const storyPublishSchema = z.object({ storyId: objectIdInput });
+
+function validatePublication(storyId, scenes) {
   const initial = scenes.filter((scene) => scene.type === 'initial');
   if (initial.length !== 1) {
     throw new AppError(409, 'invalidInitialSceneCount', 'Příběh musí mít právě jednu úvodní scénu.', { storyId });
@@ -38,4 +44,57 @@ export function validatePublication(storyId, scenes) {
     throw new AppError(409, 'storyHasDeadEnds', 'Z každé scény musí vést cesta k některé koncové scéně.',
       { storyId, sceneIds });
   }
+}
+
+export function mountStoryPublish(router, { stories, scenes, audit, indexStory, token, writeStory }) {
+  router.post('/story/publish', gatewayPlayer(token), commandInput(storyPublishSchema, 'body'),
+    asyncHandler(async (req, res) => {
+      const { storyId } = req.dtoIn;
+      const { requestId, playerId } = req;
+      const record = {
+        actorId: playerId, actorProfiles: ['Users'], operation: OPERATION,
+        entityType: 'story', entityId: storyId, storyId, detail: {},
+      };
+      const notEditable = () => new AppError(409, 'storyNotEditable', 'Publikovat lze jen koncept příběhu.', { storyId });
+      let published;
+      try {
+        published = await writeStory(storyId, async () => {
+          const story = await stories.get(storyId);
+          if (!story) throw new AppError(404, 'storyNotFound', 'Příběh nebyl nalezen.', { storyId });
+          if (story.authorId !== playerId) {
+            throw new AppError(403, 'userNotAuthorized', 'Uživatel nemá oprávnění publikovat tento příběh.', { storyId });
+          }
+          if (story.state !== 'draft') throw notEditable();
+          const sceneList = await scenes.listByStory(storyId);
+          validatePublication(storyId, sceneList);
+          const updated = await stories.publish(storyId);
+          if (!updated) throw notEditable();
+          return { ...updated, sceneCount: sceneList.length };
+        });
+      } catch (error) {
+        let failure = error;
+        if (!(error instanceof AppError)) {
+          console.error({ requestId, operation: OPERATION, error: error.message });
+          failure = new AppError(500, 'storyPublishFailed', 'Příběh se nepodařilo publikovat.', { storyId });
+        }
+        await audit.tryCreate({
+          ...record, result: failure.status < 500 ? 'denied' : 'error', errorCode: failure.code,
+        }, { requestId });
+        throw failure;
+      }
+
+      const uuAppErrorMap = { ...req.uuAppErrorMap };
+      await Promise.all([
+        audit.tryCreate({ ...record, result: 'success' }, { requestId }),
+        (async () => {
+          try {
+            await indexStory(storyId, requestId);
+          } catch (error) {
+            console.error({ requestId, operation: OPERATION, error: error.message });
+            uuAppErrorMap.storyIndexUpdateFailed = { storyId };
+          }
+        })(),
+      ]);
+      res.json({ story: published, uuAppErrorMap });
+    }));
 }

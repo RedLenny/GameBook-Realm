@@ -45,7 +45,7 @@ export function createApp({
   ], requireSession);
   app.post([
     '/api/stories/story/create', '/api/stories/scene/create', '/api/stories/decision/create',
-    '/api/stories/scene/delete',
+    '/api/stories/scene/delete', '/api/stories/story/publish',
     '/api/playthroughs/start', '/api/playthroughs/chooseDecision', '/api/discovery/rating/create',
   ], requireSession);
 
